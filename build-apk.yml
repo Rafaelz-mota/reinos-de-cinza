@@ -1,0 +1,76 @@
+name: Gerar APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.3"
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar Godot e modelos de exportação
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -O godot.zip
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -O templates.tpz
+          unzip -q godot.zip -d "$RUNNER_TEMP/godot"
+          sudo mv "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          unzip -q templates.tpz -d "$RUNNER_TEMP/templates"
+          mv "$RUNNER_TEMP/templates/templates" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+
+      - name: Instalar partes do Android SDK exigidas pelo Godot
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "SDK em: $SDK"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "build-tools;34.0.0" "platforms;android-34" \
+            "cmake;3.10.2.4988404" "ndk;23.2.8568313"
+          echo "ANDROID_SDK_PATH=$SDK" >> "$GITHUB_ENV"
+
+      - name: Configurar o Godot para exportar Android
+        run: |
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
+            -keystore "$HOME/debug.keystore" -storepass android \
+            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+          mkdir -p "$HOME/.config/godot"
+          for f in editor_settings-4.tres editor_settings-${GODOT_VERSION}.tres; do
+            cat > "$HOME/.config/godot/$f" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_SDK_PATH"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF
+          done
+          # O Godot lê a chave de assinatura de teste destas variáveis.
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
+      - name: Importar o projeto
+        run: godot --headless --path . --import || true
+
+      - name: Exportar o APK
+        run: |
+          mkdir -p build
+          godot --headless --path . --export-debug "Android" build/reinos-de-cinza.apk
+          ls -la build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reinos-de-cinza-apk
+          path: build/reinos-de-cinza.apk

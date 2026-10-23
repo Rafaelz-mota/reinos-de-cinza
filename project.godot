@@ -1,0 +1,24 @@
+; Projeto do Godot 4.x - protótipo "Reinos de Cinza" (nome provisório)
+config_version=5
+
+[application]
+
+config/name="Reinos de Cinza (protótipo)"
+run/main_scene="res://main.tscn"
+config/icon="res://icon.svg"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/size/window_width_override=405
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+window/handheld/orientation=1
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
